@@ -1,0 +1,131 @@
+import tkinter as tk
+from tkinter import messagebox, ttk
+import sqlite3
+from datetime import datetime
+
+# ── BANCO DE DADOS ────────────────────────────────────────────────────────────
+
+conn = sqlite3.connect("estoque.db")
+conn.execute("""
+    CREATE TABLE IF NOT EXISTS produtos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome TEXT,
+        quantidade INTEGER,
+        preco REAL
+    )
+""")
+conn.commit()
+
+# ── LOG ───────────────────────────────────────────────────────────────────────
+
+def salvar_log(mensagem):
+    with open("log.txt", "a", encoding="utf-8") as f:
+        agora = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        f.write(f"[{agora}] {mensagem}\n")
+
+# ── FUNÇÕES DOS BOTÕES ────────────────────────────────────────────────────────
+
+def carregar():
+    for row in tabela.get_children():
+        tabela.delete(row)
+    for p in conn.execute("SELECT * FROM produtos"):
+        tabela.insert("", "end", values=p)
+
+def adicionar():
+    nome  = campo_nome.get()
+    qtd   = campo_qtd.get()
+    preco = campo_preco.get()
+
+    if not nome or not qtd or not preco:
+        messagebox.showwarning("Aviso", "Preencha todos os campos!")
+        return
+
+    conn.execute("INSERT INTO produtos (nome, quantidade, preco) VALUES (?, ?, ?)",
+                 (nome, int(qtd), float(preco)))
+    conn.commit()
+    salvar_log(f"Adicionado: {nome} | Qtd: {qtd} | Preço: {preco}")
+    carregar()
+    limpar()
+
+def selecionar(event):
+    item = tabela.focus()
+    if not item:
+        return
+    v = tabela.item(item, "values")
+    campo_id.set(v[0])
+    campo_nome.delete(0, tk.END); campo_nome.insert(0, v[1])
+    campo_qtd.delete(0, tk.END);  campo_qtd.insert(0, v[2])
+    campo_preco.delete(0, tk.END); campo_preco.insert(0, v[3])
+
+def atualizar():
+    if not campo_id.get():
+        messagebox.showwarning("Aviso", "Clique num produto para editar.")
+        return
+    conn.execute("UPDATE produtos SET nome=?, quantidade=?, preco=? WHERE id=?",
+                 (campo_nome.get(), int(campo_qtd.get()), float(campo_preco.get()), int(campo_id.get())))
+    conn.commit()
+    salvar_log(f"Atualizado ID {campo_id.get()}: {campo_nome.get()}")
+    carregar()
+    limpar()
+
+def excluir():
+    if not campo_id.get():
+        messagebox.showwarning("Aviso", "Clique num produto para excluir.")
+        return
+    if messagebox.askyesno("Confirmar", f"Excluir '{campo_nome.get()}'?"):
+        conn.execute("DELETE FROM produtos WHERE id=?", (int(campo_id.get()),))
+        conn.commit()
+        salvar_log(f"Excluído ID {campo_id.get()}: {campo_nome.get()}")
+        carregar()
+        limpar()
+
+def limpar():
+    campo_id.set("")
+    campo_nome.delete(0, tk.END)
+    campo_qtd.delete(0, tk.END)
+    campo_preco.delete(0, tk.END)
+
+# ── JANELA ────────────────────────────────────────────────────────────────────
+
+janela = tk.Tk()
+janela.title("Estoque da Loja")
+janela.geometry("600x420")
+janela.configure(bg="#f5f5f5")
+
+tk.Label(janela, text="Estoque da Loja", font=("Arial", 15, "bold"), bg="#f5f5f5").pack(pady=10)
+
+# Campos
+frame = tk.Frame(janela, bg="#f5f5f5")
+frame.pack()
+
+campo_id = tk.StringVar()
+
+tk.Label(frame, text="Nome:",       bg="#f5f5f5").grid(row=0, column=0, padx=5, pady=4, sticky="e")
+campo_nome  = tk.Entry(frame, width=18); campo_nome.grid(row=0, column=1, padx=5)
+
+tk.Label(frame, text="Quantidade:", bg="#f5f5f5").grid(row=0, column=2, padx=5, sticky="e")
+campo_qtd   = tk.Entry(frame, width=8);  campo_qtd.grid(row=0, column=3, padx=5)
+
+tk.Label(frame, text="Preço R$:",   bg="#f5f5f5").grid(row=0, column=4, padx=5, sticky="e")
+campo_preco = tk.Entry(frame, width=8);  campo_preco.grid(row=0, column=5, padx=5)
+
+# Botões
+frame2 = tk.Frame(janela, bg="#f5f5f5")
+frame2.pack(pady=8)
+
+tk.Button(frame2, text="Adicionar", bg="#4caf50", fg="white", width=10, command=adicionar).grid(row=0, column=0, padx=5)
+tk.Button(frame2, text="Atualizar", bg="#2196f3", fg="white", width=10, command=atualizar).grid(row=0, column=1, padx=5)
+tk.Button(frame2, text="Excluir",   bg="#f44336", fg="white", width=10, command=excluir).grid(row=0, column=2,  padx=5)
+tk.Button(frame2, text="Limpar",    bg="#9e9e9e", fg="white", width=10, command=limpar).grid(row=0, column=3,   padx=5)
+
+# Tabela
+tabela = ttk.Treeview(janela, columns=("ID","Nome","Qtd","Preço"), show="headings", height=12)
+for col, w in zip(("ID","Nome","Qtd","Preço"), (40, 220, 80, 100)):
+    tabela.heading(col, text=col)
+    tabela.column(col, width=w, anchor="center")
+tabela.bind("<<TreeviewSelect>>", selecionar)
+tabela.pack(padx=15, fill="x")
+
+carregar()
+salvar_log("Sistema aberto.")
+janela.mainloop()
